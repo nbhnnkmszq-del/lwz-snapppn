@@ -1,7 +1,6 @@
 import requests
 import base64
 import struct
-import blackboxprotobuf
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
@@ -16,43 +15,16 @@ HEADERS = {
     "te": "trailers",
 }
 
-def modify_and_send(username, password):
+@app.route('/login', methods=['POST'])
+def login():
     full = base64.b64decode(PAYLOAD_B64)
-    
-    # إزالة gRPC frame
-    if full[0] == 0:
-        proto = full[5:]
-    else:
-        proto = full
-    
-    # تعديل username/password
-    decoded, typedef = blackboxprotobuf.decode_message(proto)
-    decoded['1'] = username.encode()
-    decoded['4'] = password.encode()
-    
-    # إعادة ترميز
-    new_proto = blackboxprotobuf.encode_message(decoded, typedef)
-    grpc_body = struct.pack('>BI', 0, len(new_proto)) + new_proto
-    
-    # إرسال
     r = requests.post(
         "https://us-east1-aws.api.snapchat.com/snapchat.janus.api.LoginService/LoginWithPassword",
         headers=HEADERS,
-        data=grpc_body,
+        data=full,
         timeout=15
     )
-    return r.status_code, r.text[:500]
-
-@app.route('/login', methods=['POST'])
-def login():
-    try:
-        data = request.get_json()
-        username = data.get('username')
-        password = data.get('password')
-        status, resp = modify_and_send(username, password)
-        return jsonify({"status": status, "response": resp})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    return jsonify({"status": r.status_code, "response": r.text[:500]})
 
 @app.route('/')
 def home():
