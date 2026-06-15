@@ -1,6 +1,7 @@
 import requests
 import base64
 import struct
+import blackboxprotobuf
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
@@ -15,8 +16,7 @@ HEADERS = {
     "te": "trailers",
 }
 
-def send_to_snapchat(username, password):
-    # فك BASE64
+def modify_and_send(username, password):
     full = base64.b64decode(PAYLOAD_B64)
     
     # إزالة gRPC frame
@@ -25,13 +25,16 @@ def send_to_snapchat(username, password):
     else:
         proto = full
     
-    # بما أننا ما نقدر نعدل protobuf بسهولة بدون مكتبة,
-    # نرسل الطلب مباشرة بدون تعديل (للتجربة)
-    # لكن بما أنك تبغى تعدل username/password, لازم نستخدم مكتبة
+    # تعديل username/password
+    decoded, typedef = blackboxprotobuf.decode_message(proto)
+    decoded['1'] = username.encode()
+    decoded['4'] = password.encode()
     
-    # الحل المؤقت: نرسل نفس الطلب الأصلي لنتأكد أن السيرفر شغال
-    grpc_body = full
+    # إعادة ترميز
+    new_proto = blackboxprotobuf.encode_message(decoded, typedef)
+    grpc_body = struct.pack('>BI', 0, len(new_proto)) + new_proto
     
+    # إرسال
     r = requests.post(
         "https://us-east1-aws.api.snapchat.com/snapchat.janus.api.LoginService/LoginWithPassword",
         headers=HEADERS,
@@ -41,12 +44,12 @@ def send_to_snapchat(username, password):
     return r.status_code, r.text[:500]
 
 @app.route('/login', methods=['POST'])
-def handle_login():
+def login():
     try:
         data = request.get_json()
-        username = data.get('username', 'abd28pu')
-        password = data.get('password', 'As1426&1426')
-        status, resp = send_to_snapchat(username, password)
+        username = data.get('username')
+        password = data.get('password')
+        status, resp = modify_and_send(username, password)
         return jsonify({"status": status, "response": resp})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
