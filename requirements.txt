@@ -1,4 +1,3 @@
 requests
 blackboxprotobuf
 flask
-gunicorn
