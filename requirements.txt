@@ -1,5 +1,4 @@
-flask
 requests
-blackboxprotobuf
+protobuf
+flask
 gunicorn
-urllib3
