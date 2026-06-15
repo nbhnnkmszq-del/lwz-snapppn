@@ -1,3 +1,5 @@
+flask
 requests
 blackboxprotobuf
-flask
+gunicorn
+urllib3
