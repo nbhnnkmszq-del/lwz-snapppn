@@ -19,24 +19,26 @@ HEADERS = {
     "te": "trailers",
 }
 
-def snap_login(username, password):
+def send_to_snapchat(username, password):
     # فك BASE64
-    proto_bytes = base64.b64decode(PAYLOAD_B64)
+    full = base64.b64decode(PAYLOAD_B64)
     
-    # فك الـ protobuf
-    decoded, typedef = blackboxprotobuf.decode_message(proto_bytes)
+    # إزالة gRPC frame (أول 5 بايتات) إذا وجدت
+    if full[0] == 0:
+        proto = full[5:]
+    else:
+        proto = full
     
-    # تعديل الحقل 1 (username) و 4 (password)
+    # فك وتعديل
+    decoded, typedef = blackboxprotobuf.decode_message(proto)
     decoded['1'] = username.encode()
     decoded['4'] = password.encode()
     
     # إعادة ترميز
-    new_bytes = blackboxprotobuf.encode_message(decoded, typedef)
+    new_proto = blackboxprotobuf.encode_message(decoded, typedef)
+    grpc_body = struct.pack('>BI', 0, len(new_proto)) + new_proto
     
-    # إضافة gRPC frame
-    grpc_body = struct.pack('>BI', 0, len(new_bytes)) + new_bytes
-    
-    # إرسال لسناب
+    # إرسال
     r = requests.post(
         "https://us-east1-aws.api.snapchat.com/snapchat.janus.api.LoginService/LoginWithPassword",
         headers=HEADERS,
@@ -50,13 +52,13 @@ def login():
     try:
         data = request.get_json()
         if not data:
-            return jsonify({"error": "No JSON received"}), 400
+            return jsonify({"error": "No JSON"}), 400
         username = data.get('username')
         password = data.get('password')
         if not username or not password:
             return jsonify({"error": "username and password required"}), 400
-        status, response = snap_login(username, password)
-        return jsonify({"status": status, "response": response})
+        status, resp = send_to_snapchat(username, password)
+        return jsonify({"status": status, "response": resp})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
